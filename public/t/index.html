@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Todo List</title>
+	<link rel="stylesheet" href="assets/css/base.css">
+	<link rel="stylesheet" href="assets/css/index.css">
+	<link rel="stylesheet" href="/js/nprogress/nprogress.css">
+</head>
+
+<body>
+	<section class="todoapp">
+		<header class="header">
+			<h1>todos</h1>
+			<input type="text" class="new-todo" placeholder="What needs to be done?" autofocus id="task">
+		</header>
+		<!-- This section should be hidden by default and shown when there are todos -->
+		<section class="main">
+			<input class="toggle-all" type="checkbox">
+			<ul class="todo-list" id="todo-list"></ul>
+		</section>
+		<!-- This footer should hidden by default and shown when there are todos -->
+		<footer class="footer">
+			<!-- This should be `0 items left` by default -->
+			<span class="todo-count"><strong id="count">0</strong> item left</span>
+			<!-- Remove this if you don't implement routing -->
+			<ul class="filters">
+				<li>
+					<a class="selected" href="javascript:;">All</a>
+				</li>
+				<li>
+					<a href="javascript:;">Active</a>
+				</li>
+				<li>
+					<a href="javascript:;">Completed</a>
+				</li>
+			</ul>
+			<!-- Hidden if no completed items are left ↓ -->
+			<button class="clear-completed">Clear completed</button>
+		</footer>
+	</section>
+	<script src="/js/jquery.min.js"></script>
+	<script src="/js/template-web.js"></script>
+	<script src="/js/nprogress/nprogress.js"></script>
+	<!-- 任务列表模板 -->
+	<script type="text/html" id="taskTpl">
+			{{each tasks}}
+			<li class='{{$value.completed ? "completed":" "}}'>
+				<div class="view">
+					<input class="toggle" type="checkbox"  {{$value.completed ? "checked":" "}}>
+					<label>{{$value.title}}</label>
+					<button class="destroy" data-id="{{$value._id}}"></button>
+				</div>
+				<input class="edit">
+			</li>
+			{{/each}}
+		</script>
+	<script type="text/javascript">
+		// 封装渲染
+		function render(){
+			// 调用template方法
+			let html = template('taskTpl', { tasks: taskAry })
+				// console.log(html);
+				// 把拼接好的字符串 写到ul中
+				taskBox.html(html)
+		}
+
+
+		//1.展示所有的列表
+		// 创建一个空数据  用来储存数据  用数据更新UI界面
+		let taskAry = []
+		// 获取展示的容器
+		let taskBox = $('#todo-list')
+		// 页面刷新就发送ajax 获取数据库的数据
+		$.ajax({
+			type: 'GET',
+			url: '/todo/task',
+			success: function (res) {
+				// console.log(res);
+				// 把数据给taskAry
+				taskAry = res;
+				render();
+			}
+		});
+		// 2.实现页面添加功能 给input框注册键盘事件
+		// 获取input框
+		let taskInput = $("#task")
+		// 注册事件
+		taskInput.on('keyup', function (e) {
+			// 获取键盘事件对象中 enter对应的keycode  进行判断
+			// console.log(e.keyCode);
+			let keyCode = e.keyCode;
+			let taskVal = $(this).val().replace(/\s/g, '');
+			// 判断是否敲击的是enter键
+			if (keyCode == 13) {
+				// 判断input框是否有内容
+				if (taskVal.length == 0) {
+					alert('请输入内容');
+					// 阻止代码执行
+					return;
+				};
+				// 判断数据库是否已有该数据 在数据中用 find()查找
+				let isTask = taskAry.find(item => item.title == taskVal)
+				// console.log(isTask);//如果有的话 会返回一个数组 如果没有返回的是undefined
+				if (isTask) {
+					alert('输入的内容重复');
+					return;
+				};
+				// 发送ajax请求
+				$.ajax({
+					type: 'post',
+					url: '/todo/addTask',
+					contentType:'application/json',
+					data:JSON.stringify({title: taskVal}),
+					success: function (res) {
+						// console.log(res);
+						// 把push到数组中
+						taskAry.push(res);
+						// 添加后清空input框的val值
+						taskInput.val('')
+						// 渲染模板
+						render();
+					}
+				})
+
+
+
+
+
+
+
+			}
+
+		})
+
+		// 3.实现删除功能  给每一个li里面的button注册点击事件  
+		//用事件委托
+		taskBox.on('click','.destroy',function(){
+			// 点击的时候 获取当前标签的自定义id值  用来在数据库查找相应的数据
+			let id=$(this).attr('data-id');
+			// console.log(id);
+			// 发送ajax
+			$.ajax({
+				type:'get',
+				url:'/todo/deleteTask',
+				data:{
+					_id:id
+				},
+				success:function(res){
+					// console.log(res);
+					// 在taskAry中要进行实时更新 通过findindex查找出对应数据的下标
+					let index= taskAry.findIndex(item=>item._id==res._id)
+					// 在通过下标 用splice删除相应的数据
+					taskAry.splice(index,1)
+					// console.log(taskAry);
+					// 渲染模板
+					render();
+				}
+			})
+			
+		})
+		
+		// 4.状态更新
+		// 复选框发生改变时 使用时间委托
+		taskBox.on('change','.toggle',function(){
+			// 获取复选框的状态
+			let status=$(this).prop('checked')
+			// let status=$(this).is(':checked')
+			// console.log(status);
+			// 获取兄弟元素身上的自定义id属性
+			let id=$(this).siblings('button').attr('data-id')
+			// console.log(id);
+			// 发送ajax
+			$.ajax({
+				type:'post',
+				url:'/todo/modifyTask',
+				contentType:'application/json',
+				data:JSON.stringify({_id:id,completed:status}),
+				success:function(res){
+					// console.log(res);
+					// 根据id在taskAry中查找 相应的数据并进行赋值 修改
+					let tasks= taskAry.find(item=>item._id==res._id);
+					tasks.completed=res.completed;
+					// console.log(tasks);
+					// console.log(res);	
+					render();
+				}
+			})
+		})
+
+		// 5.修改任务名称
+		// 给label注册双击事件 
+		taskBox.on('dblclick','label',function(){
+			// 给爷爷元素添加 editing 类名
+			$(this).parents('li').addClass('editing');
+			// 并把当前的内容写到input框里
+			$(this).parent().next().val($(this).text());
+			// 获取焦点
+			$(this).parent().next().focus();
+		})
+		// 给input框注册失去焦点事件
+		taskBox.on('blur','.edit',function(){
+			// 获取最新的任务列表名称
+			let title=$(this).val();
+			// console.log(title);
+			// 获取当前任务的id
+			let id=$(this).prev().children('button').attr('data-id');
+			// console.log(id);
+			// 发送ajax
+			$.ajax({
+				type:'post',
+				url:'/todo/modifyTask',
+				contentType:'application/json',
+				data:JSON.stringify({_id:id,completed:status}),
+				success:function(res){
+					// console.log(res);
+					// 根据id在taskAry中查找 相应的数据并进行赋值 修改
+					let tasks= taskAry.find(item=>item._id==res._id);
+					tasks.completed=res.completed;
+					// console.log(tasks);
+					// console.log(res);	
+					render();
+				}
+			})
+			
+		})
+		
+
+		//封装函数
+	</script>
+</body>
+
+</html>
